@@ -12,8 +12,7 @@
 # Note: MAKE EVERYTHING EASY TO CHANGE LATER
 # ------------------------------------------------------------------------------------------------
 #import psychopy
-from bsl import StreamPlayer, StreamRecorder, StreamViewer
-#from bsl.triggers import  
+import events, eeg, threading
 from egi_pynetstation import NetStation
 import pygame as pg
 import sys
@@ -27,9 +26,8 @@ from datetime import *
 from csv import reader
 from numpy import nanmean, nanstd
 from warnings import filterwarnings
-import numpy as np
-import mne
-from pylsl import StreamOutlet, StreamInlet, StreamInfo, resolve_stream, local_clock
+from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_stream
+import time
 
 filterwarnings("ignore") #ignore warnings
 
@@ -46,7 +44,7 @@ success = 1
 failure = -3
 
 # == Trial variables ==
-real_time = 12 * (10 ** 4) #5000 # 12 * (10 ** 5) # time that real trials last (milliseconds)
+real_time = 12 * (10 ** 5) #5000 # 12 * (10 ** 5) # time that real trials last (milliseconds)
 prac_trials = 2 # number of practice trials
 guide_trials = 1 # number of guide trials
 
@@ -484,7 +482,7 @@ def trials(game, recorder, gametype, time_or_trials, high_score, audio_path, par
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 #if gametype == 'real':
-                square_time = draw_square(outlet, tag_dict['STOP'], list_m)
+                square_time = draw_square(outlet, 'STOP', list_m, tag_dict)
                 pg.quit()
                 sys.exit()
             if event.type == pg.KEYDOWN:
@@ -493,7 +491,8 @@ def trials(game, recorder, gametype, time_or_trials, high_score, audio_path, par
                     #square_time = draw_square(outlet, 'SKP', list_m)
                     return 'k'
                 if event.key == pg.K_ESCAPE: # what is going on here
-                    square_time = draw_square(outlet, tag_dict['ESCP'], list_m)
+                    square_time = draw_square(outlet, 'ESCP', list_m, tag_dict)
+                    outlet.push_sample(['0'])
                     if gametype == 'real':
                         #LSL_push(outlet, 'ESC') #escape/quit
                         #square_time = draw_square(outlet, 'ESCP', list_m)
@@ -503,7 +502,7 @@ def trials(game, recorder, gametype, time_or_trials, high_score, audio_path, par
                 if event.key == pg.K_SPACE and (Tani + 2 < dt <= Tans+ 2):
                     #if gametype == 'real':    
                     #LSL_push(outlet, 'SPC') #space
-                    square_time = draw_square(outlet, tag_dict['SPCE'], list_m)
+                    square_time = draw_square(outlet, 'SPCE', list_m, tag_dict)
                     if not reset:
                         for target in list_t:
                             if target.isSelected and not target.isClicked:
@@ -526,12 +525,12 @@ def trials(game, recorder, gametype, time_or_trials, high_score, audio_path, par
                     if event.type == pg.MOUSEBUTTONDOWN:
                         if not obj.isClicked and not obj.isSelected:
                             #if gametype == 'real':   
-                            square_time = draw_square(outlet, tag_dict['CLCK'], list_m)
+                            square_time = draw_square(outlet, 'CLCK', list_m, tag_dict)
                             #LSL_push(outlet, 'CLK') #click object 
                             obj.state_control("clicked")
                         if not obj.isClicked and obj.isSelected:
                             #if gametype == 'real': 
-                            square_time = draw_square(outlet, tag_dict['UCLK'], list_m)
+                            square_time = draw_square(outlet, 'UCLK', list_m, tag_dict)
                             #LSL_push(outlet, 'UCLK') #unclick object 
                             obj.state_control("neutral")
                     if event.type == pg.MOUSEBUTTONUP:
@@ -560,28 +559,28 @@ def trials(game, recorder, gametype, time_or_trials, high_score, audio_path, par
                     for targ in list_m: # hovering does not change color
                         targ.state_control("neutral")
                     pg.mouse.set_visible(False)
-                    fix_record = fixation_screen(list_m, gametype, outlet, fix_record, game["stage"])
+                    fix_record = fixation_screen(list_m, gametype, outlet, fix_record, game["stage"], tag_dict)
                 elif Tfix + 1 < dt <= Tfl + 1.85:
                     for targ in list_m: # hovering does not change color
                         targ.state_control("neutral")
                     if flash == True:
-                        flash, flash_record = flash_targets(list_d, list_t, flash, gametype, outlet, flash_record) # flash color
+                        flash, flash_record = flash_targets(list_d, list_t, flash, gametype, outlet, flash_record, tag_dict) # flash color
                         dt = Tfl + 1.95
                         flash = False
                 elif Tfl + 1.85 < dt <= Tfl + 2:
                     for targ in list_m: # hovering does not change color
                         targ.state_control("neutral")
-                    flash_targets(list_d, list_t, flash, gametype, outlet, flash_record) # reset color
+                    flash_targets(list_d, list_t, flash, gametype, outlet, flash_record, tag_dict) # reset color
                 elif Tfl + 2 < dt <= Tani + 2:
                     if dt < Tfl + 2.1:# and gametype == 'real':
                         draw_square2()
                     pushed_flash_already = False
                     for targ in list_m: # hovering does not change color
                         targ.state_control("neutral")
-                    mvmt_start = animate(list_d, list_t, list_m, gametype, outlet, mvmt_start)
+                    mvmt_start = animate(list_d, list_t, list_m, gametype, outlet, mvmt_start, tag_dict)
                 elif Tani + 2 < dt <= Tans+ 2:
                     if mvmt_stop == False:# and gametype == 'real':
-                        square_time = draw_square(outlet, tag_dict['MVE1'], list_m)
+                        square_time = draw_square(outlet, 'MVE1', list_m, tag_dict)
                         mvmt_stop = True
                         cur_time = pg.time.get_ticks()
                         while pg.time.get_ticks() - cur_time < 100:
@@ -616,11 +615,13 @@ def trials(game, recorder, gametype, time_or_trials, high_score, audio_path, par
                                 # == Records info for the trial ==
                 #if gametype == 'real':
                 if len(selected_list) == len(selected_targ):# and gametype == 'real':
-                    square_time = draw_square(outlet, tag_dict['CRCT'], list_m)
+                    print('send correct')
+                    square_time = draw_square(outlet, 'CRCT', list_m, tag_dict)
                 else:
                     #if gametype == 'real':
+                    print('send incorrect')
                     miss_tag = 'MS' + str(len(selected_targ)) + str(num_targs)
-                    square_time = draw_square(outlet, tag_dict[miss_tag], list_m)
+                    square_time = draw_square(outlet, miss_tag, list_m, tag_dict)
                 hit_rates.append(len(selected_targ) / len(selected_list))
                 dprimes = d_prime(dprimes, hit_rates, game)
                 d_prime_string = str(dprimes[-1])[:4] # take first four elements
@@ -629,12 +630,10 @@ def trials(game, recorder, gametype, time_or_trials, high_score, audio_path, par
                         d_prime_string = str(dprimes[-1])[0] + str(dprimes[-1])[2] + str(dprimes[-1])[3] + str(dprimes[-1])[4]
                 while len(d_prime_string) < 4:
                     d_prime_string = d_prime_string + '0'
-                try:
-                    pass
+                #try:
                     #outlet.push_sample(d_prime_string)
-                    #outlet.send_event(event_type = d_prime_string)
-                except:
-                    pass
+                #except:
+                #    pass
                 t_sub = ((t_keypress - t0)/1000) - animation_time
                 record_response(participant_number, user_number, name, t_sub, len(selected_targ), game, False, dprimes[-1], total_time / 1000, recorder)
 
@@ -646,9 +645,7 @@ def trials(game, recorder, gametype, time_or_trials, high_score, audio_path, par
 
             if timeup: # -- if the user runs out of time
                 try:
-                    pass
-                    outlet.push_sample(tag_dict['TMUP'])
-                    #outlet.send_event(event_type = "TMUP")
+                    outlet.push_sample([tag_dict["TMUP"]])
                 except:
                     pass
                 total_time = pg.time.get_ticks() - start_time # total time in milliseconds
@@ -663,8 +660,7 @@ def trials(game, recorder, gametype, time_or_trials, high_score, audio_path, par
             if reset: # -- prepare for the next trial
                 #if gametype == 'real':
                 try:
-                    pass
-                    #outlet.resync() #resynchronize the clock
+                    outlet.resync() #resynchronize the clock
                 except:
                     pass
                 #if inter_round_record == False and gametype == 'real':
@@ -698,12 +694,11 @@ def trials(game, recorder, gametype, time_or_trials, high_score, audio_path, par
                 
         else: # -- end of experiment/practice/guide
             #if gametype == 'real':
-            square_time = draw_square(outlet, tag_dict['STOP'], list_m)
+            square_time = draw_square(outlet, 'STOP', list_m, tag_dict)
                 #LSL_push(outlet, 'END')
             pg.mouse.set_visible(False)
             if gametype == 'real':
-                pass
-                #rest_screen(outlet, 2, audio_path, 'post')
+                rest_screen(outlet, 2, audio_path, 'post', tag_dict)
             end_messages(game, gametype, recorder)
             if gametype == 'real':
                 recorder.close()
@@ -718,104 +713,88 @@ def trials(game, recorder, gametype, time_or_trials, high_score, audio_path, par
 def tag_dicts():
     # still need miss and fixation tags
     tags = ['TMUP', 'STOP', 'ESCP', 'SPCE', 'CLCK', 'UCLK', 'MVE1', 'CRCT', 'STRT', 'FLSH', 'MVE0', 
-    'OPN0', 'OPN1', 'OPN2', 'OPN3', 'CLS0', 'CLS1', 'CLS2', 'CLS3' ]
+    'OPN0', 'OPN1', 'OPN2', 'OPN3', 'CLS0', 'CLS1', 'CLS2', 'CLS3']
     tag_dict = {}
+    tag_dict['Terminate Event Stream'] = '0'
     rev_tag_dict = {}
-    for index, tag in tags:
-        tag_dict[tag] = str(index + 1)
+    for index, tag in enumerate(tags):
+        tag_dict[tag] = str(index + 2)
+    length = int(tag_dict['CLS3'])
+
+    # create fixation tags
+    for i in range(1,100):
+        tag = 'FX%s'%str(i)
+        if len(tag) < 4:
+            tag += 'X'
+        tag_dict[tag] = str(length + i)
+    
+    length = int(tag_dict['FX99'])
+    # handle miss tags
+    k = 1
+    for i in range(1, 10):
+        for j in range(0, i):
+            tag = 'MS%d%d'%(j,i)
+            tag_dict[tag] = str(length + k)
+            k += 1
+
     for tag, number_string in tag_dict.items():
         rev_tag_dict[number_string] = tag
     return tag_dict, rev_tag_dict 
-
-# prepares and returns eeg inlet and starts recording
-def prepare_lsl(user_number):
-    ## find EEG stream
-    print('\n\nLooking for EEG stream....\n\n')
-    streams = resolve_stream('type', 'EEG')
-    eeg_stream_name = streams[0].name()
-    print('\n\nFound EEG stream named %s\n\n.'%eeg_stream_name)
-
-    ## open inlet to record in another thread
-    cur_path = os.getcwd()
-    save_path = os.path.join(cur_path, 'bsl_data')
-
-    ## open inlet to record in another thread
-    cur_path = os.getcwd()
-    save_path = os.path.join(cur_path, 'bsl_data')
-
-    info_markers = StreamInfo('Marker_Stream', 'Markers', 1, 0, 'string', '_ptcpt_' + str(user_number))
-    trigger_outlet = StreamOutlet(info_markers)
-    streams_markers = resolve_stream('name', 'Marker_Stream')
-    trigger_inlet = streams_markers[0]
-    eeg_streams = resolve_stream('type', 'EEG')
-    eeg_stream_name = eeg_streams[0].name()
-    input('Press Key To Continue')
-
-    outlet = StreamRecorder(
-        record_dir = save_path, 
-        fname = 'mot_%d'%user_number, 
-        stream_name = eeg_stream_name,
-        fif_subdir = True
-        )
-    
-    outlet.start()
-    start_time = local_clock()
-    print('starttime: %f'%start_time)
-    return outlet, start_time
-    
-
-def close_and_combine(outlet, start_time, user_number):
-    # close the eeg recording
-    end_time = local_clock()
-    print('endtime: %f'%end_time)
-    outlet.stop()
-    end_time = local_clock()
-    print('endtime: %f'%end_time)
-    print('recording stopped')
-
-    # combine the eeg data and trigger data
-    cur_path = os.getcwd()
-    array_path = os.path.join(cur_path, 'mot_nback_exp')
-    array_path = os.path.join(array_path, 'arrays')
-    array_name = os.path.join(array_path, 'MOT_0.npy')
-    array = np.load(array_name)
-
-    
-    filename = os.path.join(save_path, 'fif')
-    filename = os.path.join(filename, 'mot_' + str(user_number) + '-EGI NetAmp 0-raw.fif')
-    raw = mne.io.read_raw_fif(filename, preload = True)
-    print(raw.n_times)
-
-    
-    for event in array:
-        event[0] -= start_time
-        event[0] = round(event[0] * 8000)
-        print(event[0])
-    raw.add_events(array, 'TRIGGER')    
-    
-    raw.save(filename, overwrite = True)
-    
-
 # == Main Loop.  ==
-def main(unified, outlet):
+def main(unified):
     mot_play_again = True
-    tag_dict, rev_tag_dict = tag_dicts()
     while mot_play_again == True:
+        tag_dict, rev_tag_dict = tag_dicts()
         # == Initiate pygame and collect user information ==
         #consent_screens()
         pg.init()
         pg.mixer.init()
         log, highscore_path, high_score, user_number, name, date_sys, audio_path, participant_number, results_path = prepare_files()
+    
+        
+        # prepare lab streaming layer functionality
+        # create outlet for the events
+        info_events = StreamInfo('event_stream', 'events', 1, 0, 'string', str(participant_number))
+        outlet = StreamOutlet(info_events)
 
-        outlet, start_time = prepare_lsl(user_number)
+        #print('\n\n\nLooking for prediction stream...\n\n\n')
+        #prediction_streams = resolve_stream('name', 'prediction_stream')
+        #rint('\n\n\nFound prediction stream named %s\n\n\n'%prediction_streams[0].name())
+        #prediction_inlet = StreamInlet(prediction_streams[0], recover = False)
+       
+        #prepare netstation functionality 
+        #IP address of NetStation - CHANGE THIS TO MATCH THE IP ADDRESS OF YOUR NETSTATION
+        #IP_ns = '10.10.10.42' #needs to be specified for the computer
 
+        #IP address of amplifier (if using 300
+        #series, this is the same as the IP address of
+        #NetStation. If using newer series, the amplifier
+        #has its own IP address)
+        #IP_amp = '10.10.10.51'
+
+        #Port configured for ECI in NetStation - CHANGE THIS IF NEEDED
+        #port_ns = 55513
+
+        #Start recording and send trigger to show this
+        #try:
+        #    outlet = NetStation.NetStation(IP_ns, port_ns)
+        #    outlet.connect(ntp_ip = IP_amp)
+        #    outlet.begin_rec()
+            #send_tags(outlet) # send tags so that they will always be ordered properly
+        #    outlet.send_event(event_type = 'STRT', start = 0.0)
+        #except:
+        #    outlet = 0
+        #    send_tags(outlet)
+        #start_level = choose_lvl()
         start_level = ''
         game_guide = update_game(0)
         game_prac = update_game(0)
         if start_level == '':
             game_real = update_game(0)
+        else:
+            game_real = update_game(int(start_level) - 1)
          # start rest screen 1 #
-        #rest_screen(outlet, 0, audio_path, 'pre')
+        rest_screen(outlet, 0, audio_path, 'pre', tag_dict)
         
         if start_level == '':
             # == Start guide ==
@@ -829,18 +808,18 @@ def main(unified, outlet):
         # == Start real trials, recording responses ==
         if key == 'k' or key == 'complete':
             try:
-                pass
-                #outlet.resync()
+                outlet.resync()
             except:
                 pass
-            square_time = draw_square(outlet, tag_dict['STRT'], 0)
+            square_time = draw_square(outlet, 'STRT', 0, tag_dict)
             while pg.time.get_ticks() - square_time < 100:
                 draw_square2()
             #LSL_push(outlet, 'real_trials_start')
             score, dprimes, last_level, highest_level = trials(game_real, log, 'real', real_time, high_score, audio_path, participant_number, user_number, name, outlet, tag_dict)
+            outlet.push_sample(['0'])
         else:
             score = 0
-        #outlet.stop()
+    
         if score > high_score[4]: # update high score if applicable  
             i = 4
             while (score > high_score[i]) and (i >= 0): # calculate where on the highscore list it goes
@@ -879,7 +858,6 @@ def main(unified, outlet):
 
         # allow user to play again without rerunning program
         pg.mixer.quit()
-        close_and_combine(outlet, start_time, user_number)
         mot_play_again = play_again_exp()
         if mot_play_again == True:
             if unified == True:
@@ -892,5 +870,4 @@ def main(unified, outlet):
                 sys.exit()
 
 if __name__ == "__main__":
-
     main(False)
