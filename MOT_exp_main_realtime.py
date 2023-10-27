@@ -436,7 +436,7 @@ def prepare_files():
     return log, highscore_path, high_score, user_number, name, date_sys, audio_path, participant_number, results_path
 
 # == Runs Real Trials (same as practice but user performance is saved) ==
-def trials(game, recorder, gametype, time_or_trials, high_score, audio_path, participant_number, user_number, name, outlet, tag_dict):
+def trials(game, recorder, gametype, time_or_trials, high_score, audio_path, participant_number, user_number, name, outlet, tag_dict, prediction_inlet):
     #outlet.resync()
     # == Messages to user based on gametype ==
     welcome_messages(game, gametype, high_score)
@@ -714,7 +714,6 @@ def tag_dicts():
     # still need miss and fixation tags
     tags = ['TMUP', 'STOP', 'ESCP', 'SPCE', 'CLCK', 'UCLK', 'MVE1', 'CRCT', 'STRT', 'FLSH', 'MVE0', 
     'OPN0', 'OPN1', 'OPN2', 'OPN3', 'CLS0', 'CLS1', 'CLS2', 'CLS3']
-    incorrect_codes = []
     tag_dict = {}
     rev_tag_dict = {}
     for index, tag in enumerate(tags):
@@ -735,9 +734,7 @@ def tag_dicts():
         for j in range(0, i):
             tag = 'MS%d%d'%(j,i)
             tag_dict[tag] = str(length + k)
-            incorrect_codes.append(length + k)
             k += 1
-    print(incorrect_codes)
 
     for tag, number_string in tag_dict.items():
         rev_tag_dict[number_string] = tag
@@ -759,10 +756,10 @@ def main(unified):
         info_events = StreamInfo('event_stream', 'events', 1, 0, 'string', str(participant_number))
         outlet = StreamOutlet(info_events)
 
-        #print('\n\n\nLooking for prediction stream...\n\n\n')
-        #prediction_streams = resolve_stream('name', 'prediction_stream')
-        #rint('\n\n\nFound prediction stream named %s\n\n\n'%prediction_streams[0].name())
-        #prediction_inlet = StreamInlet(prediction_streams[0], recover = False)
+        print('\n\n\nLooking for prediction stream...\n\n\n')
+        prediction_streams = resolve_stream('name', 'prediction_stream')
+        print('\n\n\nFound prediction stream named %s\n\n\n'%prediction_streams[0].name())
+        prediction_inlet = StreamInlet(prediction_streams[0], recover = False)
        
         #prepare netstation functionality 
         #IP address of NetStation - CHANGE THIS TO MATCH THE IP ADDRESS OF YOUR NETSTATION
@@ -800,11 +797,11 @@ def main(unified):
         
         if start_level == '':
             # == Start guide ==
-            key = trials(game_guide, log, 'guide', guide_trials, high_score, audio_path, participant_number, user_number, name, outlet, tag_dict)
+            key = trials(game_guide, log, 'guide', guide_trials, high_score, audio_path, participant_number, user_number, name, outlet, tag_dict, prediction_inlet)
 
             # == Start practice ==
             if key == 'k' or key == 'complete':
-                key = trials(game_prac, log, 'practice', prac_trials, high_score, audio_path, participant_number, user_number, name, outlet, tag_dict)
+                key = trials(game_prac, log, 'practice', prac_trials, high_score, audio_path, participant_number, user_number, name, outlet, tag_dict, prediction_inlet)
         else:
             key = 'k'
         # == Start real trials, recording responses ==
@@ -817,7 +814,7 @@ def main(unified):
             while pg.time.get_ticks() - square_time < 100:
                 draw_square2()
             #LSL_push(outlet, 'real_trials_start')
-            score, dprimes, last_level, highest_level = trials(game_real, log, 'real', real_time, high_score, audio_path, participant_number, user_number, name, outlet, tag_dict)
+            score, dprimes, last_level, highest_level = trials(game_real, log, 'real', real_time, high_score, audio_path, participant_number, user_number, name, outlet, tag_dict, prediction_inlet)
             outlet.push_sample(['0'])
         else:
             score = 0
