@@ -1,28 +1,43 @@
+# Written by David Falk (UChicago APEX Lab) to collect data from MOT task.
+# This file collects the event data and stores it in a file for later use in the
+# inlets.py function
 from pylsl import StreamInlet, resolve_stream, local_clock
 import numpy as np
 import os
-import time
 
+# Create tag dicts so that tags and associated numbers get printed
+# on screen so that they experimenter knows the code is running
+# properly
 def tag_dicts():
-    # still need miss and fixation tags
-    tags = ['TMUP', 'STOP', 'ESCP', 'SPCE', 'CLCK', 'UCLK', 'MVE1', 'CRCT', 'STRT', 'FLSH', 'MVE0', 
-    'OPN0', 'OPN1', 'OPN2', 'OPN3', 'CLS0', 'CLS1', 'CLS2', 'CLS3']
+    
+    # initialize forwards and reverse dictionaries
     tag_dict = {}
-    tag_dict['Terminate Event Stream'] = '0'
     rev_tag_dict = {}
+    
+    # Fixed Tags
+    tags = ['Time Up', 'Game Stop', 'Escape Key', 'Space Key', 'Click', 'Unclick', 
+            'Movement Stop', 'Correct', 'Game start', 'Balls Flashing', 'Movement Start', 
+            'First Eyes Open Start', 'First Eyes Open Stop', 'Second Eyes Open Start',
+            'Second Eyes Open Stop', 'First Eyes Closed Start', 'First Eyes Closed Stop',
+            'Second Eyes Closed Start', 'Second Eyes Closed Stop']
+    
+    # tag for end of event stream
+    tag_dict['Terminate Event Stream'] = '0'
+    
+    # add the fixed tags to the dict
     for index, tag in enumerate(tags):
         tag_dict[tag] = str(index + 2)
-    length = int(tag_dict['CLS3'])
+    length = int(tag_dict['Second Eyes Closed Stop'])
 
-    # create fixation tags
+    # Fixation tags
     for i in range(1,100):
         tag = 'FX%s'%str(i)
         if len(tag) < 4:
             tag += 'X'
         tag_dict[tag] = str(length + i)
-    
     length = int(tag_dict['FX99'])
-    # handle miss tags
+    
+    # Miss tags
     k = 1
     for i in range(1, 10):
         for j in range(0, i):
@@ -30,20 +45,13 @@ def tag_dicts():
             tag_dict[tag] = str(length + k)
             k += 1
 
+    # Create reverse dictionary
     for tag, number_string in tag_dict.items():
         rev_tag_dict[number_string] = tag
     return tag_dict, rev_tag_dict
 
 # saves our events into the event_data folder
-def save_events(collected_data, subject_num):
-    # file paths for storing event data
-    rel_path = os.path.dirname(__file__)
-    save_path = os.path.join(rel_path, 'event_data')
-    filename = os.path.join(save_path, subject_num + '.npy')
-
-    # create save folder if necessary
-    if not os.path.exists(save_path):
-        os.mkdir(save_path)
+def save_events(collected_data, filename):
 
     # storing our array in the array folder
     collected_data_new = np.array(collected_data.copy())
@@ -68,6 +76,17 @@ def pull_samples(inlet_events, stats_dict, rev_tag_dict):
 
 # pull events and save data
 def event_inlet(stats_dict, subject_num):
+    
+    # file paths for storing event data
+    rel_path = os.path.dirname(__file__)
+    save_path = os.path.join(rel_path, 'event_data')
+    filename = os.path.join(save_path, subject_num + '.npy')
+
+    # create save folder if necessary
+    if not os.path.exists(save_path):
+        os.mkdir(save_path)
+    
+    # create relevant tag dictionaries
     tag_dict, rev_tag_dict = tag_dicts()
     
     # finding stream
@@ -80,14 +99,11 @@ def event_inlet(stats_dict, subject_num):
     stats_dict['event stream initialized'] = True
 
     # wait until eeg and marker stream have been initialized
-    #while stats_dict['eeg stream initialized'] == False:
-    #    pass
+    while stats_dict['eeg stream initialized'] == False:
+        pass
 
     # pull samples until event outlet stream closes
     collected_data = pull_samples(inlet_events, stats_dict, rev_tag_dict)
 
     # save our events to the event_data folder
-    save_events(collected_data, subject_num)
-
-if __name__ == '__main__':
-    event_inlet()
+    save_events(collected_data, filename)
