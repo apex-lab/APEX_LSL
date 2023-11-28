@@ -71,10 +71,19 @@ def save_data(eeg_samples, updated_dins, stats_dict, raw_filename):
         din[0] -= start_time
         din[0] = round(din[0] * sfreq)
         din[2] = 1
-    raw.add_events(updated_dins, 'STI 014', replace = True)
-
-    # save the raw file
-    raw.save(raw_filename, overwrite = True)
+    
+    if updated_dins == []:
+        # if the list of DINs is empty then it is likely that the light sensor is not
+        # set up properly
+        raise ValueError('''Empty List of DINs from light sensor. It is likely that
+            the light sensor is not working properly. Check to see if the DIN1, DIN2
+            and DIN3 lights on the light sensor box are lighting up when the square flashes white.''')
+    else:
+        # add the DINs to the raw file
+        raw.add_events(updated_dins, 'STI 014', replace = True)
+        
+        # save the raw file
+        raw.save(raw_filename, overwrite = True)
 
 
 # pull chunks of data from eeg outlet and save in "eeg_samples" array
