@@ -22,7 +22,6 @@ def add_raw_events(raw, event_data, stats_dict, eeg_data_path):
 
 # load events from the saved event file
 def load_events(event_data_path):
-    cur_path = os.path.dirname(__file__)
     event_data = np.load(event_data_path)
     return event_data
 
@@ -77,7 +76,8 @@ if __name__ == '__main__':
     add_raw_events(raw, event_data, stats_dict, eeg_data_path)
 
     # reload and print events to check if everything worked
-    raw, eeg_data_path = load_raw()
-    events = mne.find_events(raw)
-    for event in events:
+    # for experimenter purposes
+    raw = load_raw(eeg_data_path)
+    raw_events = mne.find_events(raw)
+    for event in raw_events:
         print(event)

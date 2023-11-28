@@ -31,7 +31,7 @@ def tag_dicts():
 
     # Fixation tags
     for i in range(1,100):
-        tag = 'FX%s'%str(i)
+        tag = 'Fixation on Level %s'%str(i)
         if len(tag) < 4:
             tag += 'X'
         tag_dict[tag] = str(length + i)
@@ -41,7 +41,7 @@ def tag_dicts():
     k = 1
     for i in range(1, 10):
         for j in range(0, i):
-            tag = 'MS%d%d'%(j,i)
+            tag = 'Incorrect Trial: %d / %d targets identified correctly'%(j,i)
             tag_dict[tag] = str(length + k)
             k += 1
 

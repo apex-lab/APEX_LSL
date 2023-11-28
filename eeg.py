@@ -14,6 +14,7 @@ din_off_value = 65535 # value for a "black" light sensor reading
 
 # loads the eeg data and din events from the h5 file
 def load_data(h5_filename):
+    
     with h5py.File(h5_filename, 'r') as f:
         
         # grab the eeg data
@@ -91,17 +92,18 @@ def pull_chunks(inlet_eeg, stats_dict, h5_filename):
         index = 0
         while True:
             try:
-                # pull our chunk
+                # pull our chunk and calculate time correction
+                correction = inlet_eeg.time_correction()
                 new_samples_old, new_timestamps = inlet_eeg.pull_chunk()
                 new_samples = np.array(new_samples_old)
-
+                
                 # skip if empty chunk
                 if len(new_samples) == 0:
                     continue
 
                 # store the timestamp of the very first eeg sample that we save
                 if found_first_eeg_sample == False:
-                    stats_dict['eeg start'] = float(new_timestamps[0])
+                    stats_dict['eeg start'] = float(new_timestamps[0] + correction)
                     found_first_eeg_sample = True
 
                 # separate and store the eeg and DIN data
@@ -119,7 +121,7 @@ def pull_chunks(inlet_eeg, stats_dict, h5_filename):
                 # add our new din events
                 new_din_events = []
                 for din_sample, timestamp in zip(din_samples, new_timestamps):
-                    din_event = [float(timestamp), float(0), float(din_sample)]
+                    din_event = [float(timestamp + correction), float(0), float(din_sample)]
                     new_din_events.append(din_event)
                 din_data[index:new_index] = np.array(new_din_events)
 
